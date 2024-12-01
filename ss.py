@@ -16,6 +16,11 @@ from cryptography import x509
 from cryptography.hazmat.backends import default_backend
 from datetime import datetime, timedelta
 
+BOT_TOKEN = '7883917822:AAE_l6SIdBgzHuEbJ8eIVxfN9mDg_RnzPx4'
+
+# إنشاء البوت
+bot = telebot.TeleBot(BOT_TOKEN)
+
 class AdvancedNetworkSecurityScanner:
     def __init__(self, target):
         self.target = target
