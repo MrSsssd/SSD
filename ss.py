@@ -1,27 +1,24 @@
 import telebot
 import socket
 import requests
-import ssl
 import whois
-import urllib3
-from bs4 import BeautifulSoup
-from datetime import datetime
-import re
-import concurrent.futures
 import nmap
 import dns.resolver
 import ipaddress
-import subprocess
+import concurrent.futures
 import json
+import re
 import os
+from datetime import datetime
+from bs4 import BeautifulSoup
 import shodan
-import sslyze
-from sslyze import ServerConnector
-from sslyze.plugins import HttpHeaderScannerPlugin
-from sslyze.server_connectivity_tester import ServerConnectivityTester
+import ssl
+import urllib3
+import cryptography
+from urllib.parse import urlparse
 
 # توكن البوت
-BOT_TOKEN = '7842557859:AAFJmg7hwHTHFjAdF8EKlCq08v7qsUa3Iu8'
+BOT_TOKEN = '8166843437:AAEZ-BJyWtzA2nKdKGhCLavP7iwg7hk5tsE'
 
 # مفتاح Shodan للبحث عن الثغرات
 SHODAN_API_KEY = 'wmzOdzuFAUTCpTJ0nKxxQU6h57NC8F34'
@@ -30,27 +27,26 @@ SHODAN_API_KEY = 'wmzOdzuFAUTCpTJ0nKxxQU6h57NC8F34'
 bot = telebot.TeleBot(BOT_TOKEN)
 shodan_api = shodan.Shodan(SHODAN_API_KEY)
 
-class ComprehensiveSecurity:
-    def __init__(self, domain):
-        self.domain = domain
-        self.ip = self.get_ip()
+class AdvancedSecurityScanner:
+    def __init__(self, target):
+        self.target = target.replace('https://', '').replace('http://', '').replace('www.', '')
+        self.ip = self.resolve_ip()
     
-    def get_ip(self):
+    def resolve_ip(self):
         """استخراج عنوان IP"""
         try:
-            return socket.gethostbyname(self.domain)
+            return socket.gethostbyname(self.target)
         except Exception as e:
             return None
-    
+
     def advanced_port_scan(self):
-        """فحص شامل للمنافذ"""
+        """فحص شامل للمنافذ مع تفاصيل الثغرات"""
         try:
             nm = nmap.PortScanner()
-            # فحص شامل مع استكشاف الثغرات
-            nm.scan(self.ip, arguments='-sV -sC -p- -A -O --script vuln')
+            # فحص شامل مع تفاصيل الثغرات
+            nm.scan(self.ip, arguments='-sV -sC -p- -A -O --script vuln,exploit')
             
-            detailed_ports = []
-            vulnerabilities = []
+            detailed_vulnerabilities = []
             
             for host in nm.all_hosts():
                 for proto in nm[host].all_protocols():
@@ -59,201 +55,259 @@ class ComprehensiveSecurity:
                     for port in ports:
                         service = nm[host][proto][port]
                         
-                        # تفاصيل المنفذ
-                        port_info = {
-                            'port': port,
-                            'state': service['state'],
-                            'service': service.get('name', 'Unknown'),
-                            'product': service.get('product', 'Unknown'),
-                            'version': service.get('version', 'Unknown'),
-                            'extra_info': service.get('extrainfo', '')
-                        }
-                        
-                        # استخراج الثغرات المحتملة
+                        # استخراج الثغرات التفصيلية
                         if 'script' in service:
                             for script_name, script_output in service['script'].items():
-                                if 'vuln' in script_name.lower():
-                                    vulnerabilities.append({
-                                        'port': port,
-                                        'service': port_info['service'],
-                                        'vulnerability': script_name,
-                                        'details': script_output
-                                    })
-                        
-                        detailed_ports.append(port_info)
+                                if 'vuln' in script_name.lower() or 'exploit' in script_name.lower():
+                                    vulnerability = self.analyze_vulnerability(
+                                        port=port, 
+                                        service=service.get('name', 'Unknown'),
+                                        script_name=script_name,
+                                        script_output=script_output
+                                    )
+                                    detailed_vulnerabilities.append(vulnerability)
             
-            return detailed_ports, vulnerabilities
+            return detailed_vulnerabilities
         
         except Exception as e:
-            return [], [f"خطأ في فحص المنافذ: {str(e)}"]
-    
-    def shodan_vulnerability_check(self):
-        """فحص الثغرات باستخدام Shodan"""
-        try:
-            host = shodan_api.host(self.ip)
-            vulnerabilities = []
-            
-            # استخراج الثغرات المعروفة
-            if 'vulns' in host:
-                for cve, details in host['vulns'].items():
-                    vulnerabilities.append({
-                        'cve': cve,
-                        'severity': details.get('severity', 'غير محدد'),
-                        'description': details.get('description', 'لا توجد تفاصيل')
-                    })
-            
-            return vulnerabilities
+            return [self.create_vulnerability_report(
+                type='فشل المسح',
+                name='خطأ في فحص المنافذ',
+                description=str(e),
+                severity='حرج',
+                potential_impact='تعطيل الفحص الأمني',
+                exploit_method='غير متاح'
+            )]
+
+    def analyze_vulnerability(self, port, service, script_name, script_output):
+        """تحليل الثغرات بالتفصيل"""
+        severity = self.determine_severity(script_name, script_output)
         
-        except Exception as e:
-            return [f"خطأ في فحص Shodan: {str(e)}"]
-    
-    def ssl_deep_scan(self):
-        """فحص متعمق لبروتوكول SSL"""
-        try:
-            # اختبار الاتصال
-            server_test = ServerConnectivityTester().perform(
-                hostname=self.domain, 
-                port=443
-            )
-            
-            # فحص شامل للشهادة
-            ssl_scanner = ServerConnector.connect(server_test)
-            
-            # التحقق من الثغرات
-            vulnerabilities = []
-            
-            # فحص إصدارات بروتوكول TLS
-            if ssl_scanner.tls_version_used < TlsVersionEnum.TLS_1_2:
-                vulnerabilities.append({
-                    'type': 'بروتوكول TLS قديم',
-                    'risk': 'عالي',
-                    'description': 'يستخدم إصدار TLS قديم وغير آمن'
-                })
-            
-            # فحص الشهادة
-            cert = ssl_scanner.get_cert()
-            if cert.not_valid_after < datetime.now():
-                vulnerabilities.append({
-                    'type': 'شهادة SSL منتهية',
-                    'risk': 'عالي',
-                    'description': 'شهادة SSL منتهية الصلاحية'
-                })
-            
-            return vulnerabilities
+        return self.create_vulnerability_report(
+            type='ثغرة منفذ',
+            name=script_name,
+            description=script_output,
+            port=port,
+            service=service,
+            severity=severity,
+            potential_impact=self.assess_potential_impact(severity),
+            exploit_method=self.suggest_exploit_method(script_name)
+        )
+
+    def determine_severity(self, script_name, script_output):
+        """تحديد درجة خطورة الثغرة"""
+        severity_keywords = {
+            'حرج': ['critical', 'remote code', 'rce', 'root', 'admin', 'system'],
+            'عالي': ['high', 'exploit', 'vulnerability', 'remote', 'dangerous'],
+            'متوسط': ['medium', 'potential', 'possible', 'moderate'],
+            'منخفض': ['low', 'information', 'minor']
+        }
         
-        except Exception as e:
-            return [f"خطأ في فحص SSL: {str(e)}"]
-    
+        script_lower = script_name.lower() + ' ' + str(script_output).lower()
+        
+        for severity, keywords in severity_keywords.items():
+            if any(keyword in script_lower for keyword in keywords):
+                return severity
+        
+        return 'منخفض'
+
+    def assess_potential_impact(self, severity):
+        """تقييم التأثير المحتمل للثغرة"""
+        impact_map = {
+            'حرج': 'إمكانية التحكم الكامل في النظام، سرقة البيانات، تعطيل الخدمات',
+            'عالي': 'اختراق جزئي، سرقة بيانات محدودة، تعديل إعدادات النظام',
+            'متوسط': 'الوصول المحدود، تسريب معلومات غير حساسة',
+            'منخفض': 'تأثير محدود، معلومات غير هامة'
+        }
+        return impact_map.get(severity, 'غير معروف')
+
+    def suggest_exploit_method(self, script_name):
+        """اقتراح طرق الاستغلال المحتملة"""
+        exploit_methods = {
+            'rce': 'إرسال أوامر تنفيذ عن بعد، حقن كود ضار',
+            'injection': 'إدخال أوامر خبيثة في المدخلات',
+            'remote': 'استغلال اتصال عن بعد دون مصادقة',
+            'traversal': 'الوصول للملفات خارج المجلد المسموح',
+            'xss': 'حقن برمجيات خبيثة في صفحات الويب',
+            'default': 'استغلال ضعف في التكوين أو الإعدادات'
+        }
+        
+        for key, method in exploit_methods.items():
+            if key in script_name.lower():
+                return method
+        
+        return 'استغلال عام للثغرة'
+
+    def create_vulnerability_report(self, **kwargs):
+        """إنشاء تقرير مفصل عن الثغرة"""
+        return {
+            'النوع': kwargs.get('type', 'غير محدد'),
+            'الاسم': kwargs.get('name', 'ثغرة مجهولة'),
+            'الوصف': kwargs.get('description', 'لا توجد تفاصيل'),
+            'المنفذ': kwargs.get('port', 'غير محدد'),
+            'الخدمة': kwargs.get('service', 'غير محددة'),
+            'درجة الخطورة': kwargs.get('severity', 'منخفض'),
+            'التأثير المحتمل': kwargs.get('potential_impact', 'لا يوجد'),
+            'طريقة الاستغلال': kwargs.get('exploit_method', 'غير معروفة')
+        }
+
     def web_vulnerability_scan(self):
-        """فحص الثغرات الويب"""
+        """فحص شامل لثغرات الويب"""
+        vulnerabilities = []
         try:
-            # إعداد طلب HTTPS
-            url = f'https://{self.domain}'
-            response = requests.get(url, timeout=10)
-            
-            # تحليل HTML للبحث عن ثغرات محتملة
+            url = f'https://{self.target}'
+            response = requests.get(url, timeout=10, verify=False)
             soup = BeautifulSoup(response.text, 'html.parser')
             
-            vulnerabilities = []
+            # فحص رؤوس الأمان
+            security_headers_check = self.check_security_headers(response.headers)
+            vulnerabilities.extend(security_headers_check)
             
-            # التحقق من رؤوس الأمان
-            headers = response.headers
-            security_headers = [
-                'Strict-Transport-Security',
-                'X-Frame-Options',
-                'X-XSS-Protection',
-                'Content-Security-Policy'
-            ]
+            # فحص تسريب المعلومات
+            info_leakage = self.detect_information_leakage(response.text, soup)
+            vulnerabilities.extend(info_leakage)
             
-            for header in security_headers:
-                if header not in headers:
-                    vulnerabilities.append({
-                        'type': 'رأس أمان مفقود',
-                        'header': header,
-                        'risk': 'متوسط',
-                        'description': 'مفقود رأس أمان مهم'
-                    })
-            
-            # البحث عن معلومات حساسة في HTML
-            sensitive_patterns = [
-                r'password',
-                r'secret',
-                r'key',
-                r'token'
-            ]
-            
-            for pattern in sensitive_patterns:
-                if re.search(pattern, response.text, re.IGNORECASE):
-                    vulnerabilities.append({
-                        'type': 'تسريب محتمل للمعلومات',
-                        'pattern': pattern,
-                        'risk': 'عالي',
-                        'description': 'اكتشاف كلمات دالة على تسريب معلومات'
-                    })
+            # فحص ضعف XSS
+            xss_vulnerabilities = self.check_xss_vulnerabilities(soup)
+            vulnerabilities.extend(xss_vulnerabilities)
             
             return vulnerabilities
         
         except Exception as e:
-            return [f"خطأ في فحص الويب: {str(e)}"]
-    
+            return [self.create_vulnerability_report(
+                type='فحص الويب',
+                name='فشل فحص الموقع',
+                description=str(e),
+                severity='عالي',
+                potential_impact='عدم القدرة على فحص الموقع',
+                exploit_method='غير متاح'
+            )]
+
+    def check_security_headers(self, headers):
+        """فحص رؤوس الأمان"""
+        vulnerabilities = []
+        critical_headers = {
+            'Strict-Transport-Security': 'HSTS مفقود',
+            'X-Frame-Options': 'حماية من clickjacking مفقودة',
+            'X-XSS-Protection': 'حماية XSS مفقودة',
+            'Content-Security-Policy': 'سياسة أمان المحتوى مفقودة',
+            'X-Content-Type-Options': 'حماية من MIME type sniffing مفقودة'
+        }
+        
+        for header, description in critical_headers.items():
+            if header not in headers:
+                vulnerabilities.append(self.create_vulnerability_report(
+                    type='رأس أمان مفقود',
+                    name=header,
+                    description=description,
+                    severity='متوسط',
+                    potential_impact='إمكانية تنفيذ هجمات XSS وClickjacking',
+                    exploit_method='حقن برمجيات خبيثة'
+                ))
+        
+        return vulnerabilities
+
+    def detect_information_leakage(self, text, soup):
+        """كشف تسريب المعلومات"""
+        vulnerabilities = []
+        sensitive_patterns = [
+            r'password',
+            r'secret',
+            r'key',
+            r'token',
+            r'credentials',
+            r'admin',
+            r'config'
+        ]
+        
+        for pattern in sensitive_patterns:
+            matches = re.findall(pattern, text, re.IGNORECASE)
+            if matches:
+                vulnerabilities.append(self.create_vulnerability_report(
+                    type='تسريب معلومات',
+                    name=f'نمط حساس: {pattern}',
+                    description=f'تم العثور على {len(matches)} من أنماط: {pattern}',
+                    severity='عالي',
+                    potential_impact='سرقة معلومات حساسة',
+                    exploit_method='استخراج المعلومات المسربة'
+                ))
+        
+        return vulnerabilities
+
+    def check_xss_vulnerabilities(self, soup):
+        """فحص ضعف XSS"""
+        vulnerabilities = []
+        # فحص الإدخالات المحتملة
+        inputs = soup.find_all(['input', 'textarea'])
+        
+        for input_tag in inputs:
+            if not input_tag.get('type') or input_tag.get('type').lower() in ['text', 'search']:
+                vulnerabilities.append(self.create_vulnerability_report(
+                    type='ضعف XSS',
+                    name='إدخال غير محمي',
+                    description=f'إدخال محتمل للهجوم: {input_tag}',
+                    severity='متوسط',
+                    potential_impact='تنفيذ هجمات حقن برمجي',
+                    exploit_method='حقن كود JavaScript خبيث'
+                ))
+        
+        return vulnerabilities
+
     def comprehensive_report(self):
-        """إنشاء تقرير شامل"""
+        """توليد تقرير شامل"""
         # جمع نتائج الفحوصات
-        ports, port_vulns = self.advanced_port_scan()
-        shodan_vulns = self.shodan_vulnerability_check()
-        ssl_vulns = self.ssl_deep_scan()
+        port_vulns = self.advanced_port_scan()
         web_vulns = self.web_vulnerability_scan()
         
-        # تجميع التقرير
-        report = f"""🔍 التقرير الأمني الشامل للموقع: {self.domain}
+        # دمج النتائج
+        all_vulnerabilities = port_vulns + web_vulns
         
+        # تصنيف الثغرات حسب الخطورة
+        sorted_vulns = sorted(
+            all_vulnerabilities, 
+            key=lambda x: ['حرج', 'عالي', 'متوسط', 'منخفض'].index(x.get('درجة الخطورة', 'منخفض'))
+        )
+        
+        # بناء التقرير
+        report = f"""🔍 التقرير الأمني المتقدم للموقع: {self.target}
+
 📍 معلومات أساسية:
 - عنوان IP: {self.ip}
 
-🔓 المنافذ المفتوحة:
-{self.format_ports(ports)}
-
 🚨 الثغرات المكتشفة:
-{self.format_vulnerabilities(port_vulns + shodan_vulns + ssl_vulns + web_vulns)}
 """
+        
+        if not sorted_vulns:
+            report += "لم يتم العثور على ثغرات 🎉"
+        else:
+            for vuln in sorted_vulns:
+                report += f"""
+▶️ {vuln['النوع']}
+   - الاسم: {vuln['الاسم']}
+   - الوصف: {vuln['الوصف']}
+   - درجة الخطورة: {vuln['درجة الخطورة']} 🔴
+   - التأثير المحتمل: {vuln['التأثير المحتمل']}
+   - طريقة الاستغلال: {vuln['طريقة الاستغلال']}
+"""
+        
         return report
-    
-    def format_ports(self, ports):
-        """تنسيق قائمة المنافذ"""
-        if not ports:
-            return "لا توجد منافذ مفتوحة"
-        
-        return "\n".join([
-            f"- المنفذ {p['port']}: {p['service']} ({p['product']} {p['version']})"
-            for p in ports
-        ])
-    
-    def format_vulnerabilities(self, vulns):
-        """تنسيق قائمة الثغرات"""
-        if not vulns:
-            return "لم يتم العثور على ثغرات"
-        
-        return "\n".join([
-            f"🔴 {v.get('type', 'ثغرة غير محددة')}: {v.get('description', 'لا توجد تفاصيل')}"
-            for v in vulns
-        ])
 
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
     """رسالة الترحيب"""
-    bot.reply_to(message, "مرحباً! أرسل رابط الموقع للفحص الأمني الشامل 🕵️‍♂️")
+    bot.reply_to(message, "مرحباً! أرسل رابط الموقع للفحص الأمني المتقدم 🕵️‍♂️")
 
 @bot.message_handler(func=lambda message: True)
 def scan_website(message):
     """معالجة رسائل المسح"""
-    url = message.text.strip().replace('https://', '').replace('http://', '').replace('www.', '')
+    target = message.text.strip().replace('https://', '').replace('http://', '').replace('www.', '')
     
     try:
-        # إنشاء كائن فحص شامل
-        security_scanner = ComprehensiveSecurity(url)
+        # إنشاء كائن فحص متقدم
+        security_scanner = AdvancedSecurityScanner(target)
         
         # إرسال رسالة انتظار
-        wait_message = bot.reply_to(message, "🔍 جارٍ إجراء الفحص الأمني الشامل...")
+        wait_message = bot.reply_to(message, "🔍 جارٍ إجراء الفحص الأمني المتقدم...")
         
         # توليد التقرير
         report = security_scanner.comprehensive_report()
