@@ -7,17 +7,18 @@ import subprocess
 import re
 import json
 import os
+import nmap  # إضافة مكتبة nmap للفحص المتقدم
 
 # توكن البوت - استبدله بتوكنك
-BOT_TOKEN = '8166843437:AAEZ-BJyWtzA2nKdKGhCLavP7iwg7hk5tsE'
+BOT_TOKEN='8166843437:AAEZ-BJyWtzA2nKdKGhCLavP7iwg7hk5tsE'
 
 # إنشاء البوت
 bot = telebot.TeleBot(BOT_TOKEN)
 
-class UltimateVulnerabilityScanner:
+class AdvancedNetworkScanner:
     def __init__(self, target):
         self.target = target
-        self.vulnerabilities = []
+        self.nm = nmap.PortScanner()  # إنشاء كائن nmap
 
     def extract_domain(self):
         """استخراج اسم النطاق"""
@@ -35,163 +36,85 @@ class UltimateVulnerabilityScanner:
             return None
 
     def advanced_port_scan(self, ip):
-        """فحص متقدم للمنافذ باستخدام أدوات متعددة"""
-        open_ports = []
-        all_ports = list(range(1, 65536))  # مسح جميع المنافذ
-
-        def scan_port(port):
-            try:
-                sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                sock.settimeout(0.5)
-                result = sock.connect_ex((ip, port))
-                if result == 0:
-                    service = self.identify_service(port)
-                    return {
+        """فحص متقدم للمنافذ باستخدام nmap"""
+        try:
+            # مسح جميع المنافذ مع اكتشاف الخدمات والإصدارات
+            self.nm.scan(ip, arguments='-p- -sV -sC -O')
+            
+            open_ports = []
+            for proto in self.nm[ip].all_protocols():
+                ports = self.nm[ip][proto].keys()
+                for port in ports:
+                    service = self.nm[ip][proto][port]
+                    open_ports.append({
                         'port': port,
-                        'service': service,
-                        'details': self.get_port_details(ip, port)
-                    }
-                sock.close()
-            except Exception:
-                pass
-            return None
+                        'state': service['state'],
+                        'service': service.get('name', 'Unknown'),
+                        'version': service.get('product', '') + ' ' + service.get('version', ''),
+                        'additional_info': service.get('script', {})
+                    })
+            
+            return open_ports
+        except Exception as e:
+            print(f"خطأ في مسح المنافذ: {e}")
+            return []
 
-        # مسح المنافذ بالتزامن
-        with concurrent.futures.ThreadPoolExecutor(max_workers=100) as executor:
-            results = list(executor.map(scan_port, all_ports))
-        
-        # تصفية النتائج
-        open_ports = [port for port in results if port is not None]
-        return open_ports
-
-    def identify_service(self, port):
-        """تحديد الخدمة للمنفذ"""
-        services = {
-            21: 'FTP', 22: 'SSH', 23: 'Telnet', 25: 'SMTP', 
-            53: 'DNS', 80: 'HTTP', 110: 'POP3', 143: 'IMAP', 
-            443: 'HTTPS', 3306: 'MySQL', 3389: 'RDP', 
-            5900: 'VNC', 8080: 'HTTP Proxy'
-        }
-        return services.get(port, 'Unknown Service')
-
-    def get_port_details(self, ip, port):
-        """استخراج تفاصيل المنفذ"""
+    def advanced_ssl_check(self, domain):
+        """فحص SSL المتقدم"""
         try:
-            # استخدام nmap للحصول على معلومات تفصيلية
-            cmd = f"nmap -sV -p {port} {ip}"
-            result = subprocess.check_output(cmd, shell=True, stderr=subprocess.STDOUT, text=True)
-            return result
-        except Exception:
-            return "تعذر جمع التفاصيل"
-
-    def check_vulnerabilities(self, open_ports):
-        """فحص الثغرات المحتملة"""
-        vulnerabilities = []
-        
-        # قاعدة بيانات الثغرات المتقدمة
-        vuln_database = {
-            22: {
-                'name': 'SSH Vulnerability',
-                'severity': 'حرجة',
-                'cve': 'CVE-2018-15473',
-                'description': 'ثغرة في خدمة SSH تسمح باستخراج أسماء المستخدمين',
-                'exploit': 'يمكن للمهاجم استخراج قائمة المستخدمين الصالحة',
-                'mitigation': [
-                    'تحديث OpenSSH',
-                    'تقييد المصادقة',
-                    'استخدام مفاتيح SSH بدلاً من كلمات المرور'
-                ]
-            },
-            21: {
-                'name': 'FTP Vulnerability',
-                'severity': 'عالية',
-                'cve': 'CVE-2017-7546',
-                'description': 'ثغرات في خدمات FTP تسمح بالدخول غير المصرح به',
-                'exploit': 'يمكن للمهاجم تسجيل الدخول باستخدام كلمات مرور ضعيفة',
-                'mitigation': [
-                    'استخدام SFTP بدلاً من FTP',
-                    'تطبيق كلمات مرور معقدة',
-                    'تقييد الوصول IP'
-                ]
-            },
-            80: {
-                'name': 'HTTP Vulnerability',
-                'severity': 'متوسطة',
-                'cve': 'CVE-2020-15910',
-                'description': 'ثغرات في خوادم HTTP تسمح بهجمات XSS',
-                'exploit': 'يمكن حقن أكواد خبيثة في موقع الويب',
-                'mitigation': [
-                    'تطبيق WAF',
-                    'تحديث الخادم',
-                    'التحقق من صحة المدخلات'
-                ]
-            }
-        }
-
-        for port_info in open_ports:
-            port = port_info['port']
-            if port in vuln_database:
-                vuln = vuln_database[port]
-                vuln['port_details'] = port_info
-                vulnerabilities.append(vuln)
-        
-        return vulnerabilities
-
-    def run_advanced_scans(self, ip):
-        """إجراء فحوصات متقدمة"""
-        scans = []
-        
-        # فحص SSL
-        try:
-            ssl_check = self.check_ssl(ip)
-            scans.append(ssl_check)
-        except Exception:
-            pass
-        
-        # فحص الاتصال بالخوادم
-        try:
-            network_check = self.check_network_security(ip)
-            scans.append(network_check)
-        except Exception:
-            pass
-        
-        return scans
-
-    def check_ssl(self, ip):
-        """فحص SSL وتفاصيل الشهادة"""
-        try:
-            context = ssl.create_default_context()
-            with socket.create_connection((ip, 443)) as sock:
-                with context.wrap_socket(sock, server_hostname=ip) as secure_sock:
-                    cert = secure_sock.getpeercert()
-                    
-                    return {
-                        'type': 'SSL Check',
-                        'details': f"Issuer: {cert.get('issuer', 'Unknown')}\n" +
-                                   f"Expiration: {cert.get('notAfter', 'Unknown')}"
-                    }
-        except Exception:
-            return {
-                'type': 'SSL Check',
-                'details': 'فحص SSL غير ممكن أو غير مكتمل'
-            }
-
-    def check_network_security(self, ip):
-        """فحص أمان الشبكة"""
-        try:
-            # استخدام traceroute للتحليل
-            cmd = f"traceroute {ip}"
+            # استخدام openssl للحصول على معلومات SSL التفصيلية
+            cmd = f"openssl s_client -connect {domain}:443 -brief"
             result = subprocess.check_output(cmd, shell=True, stderr=subprocess.STDOUT, text=True)
             
+            # فحص صلاحية الشهادة
+            verify_cmd = f"openssl s_client -connect {domain}:443 -verify 5"
+            verify_result = subprocess.check_output(verify_cmd, shell=True, stderr=subprocess.STDOUT, text=True)
+            
             return {
-                'type': 'Network Security',
-                'details': result
+                'ssl_details': result,
+                'verification': verify_result
             }
-        except Exception:
-            return {
-                'type': 'Network Security',
-                'details': 'تعذر إجراء فحص الشبكة'
+        except Exception as e:
+            return {'error': str(e)}
+
+    def vulnerability_analysis(self, open_ports):
+        """تحليل الثغرات المتقدم"""
+        vulnerabilities = []
+        
+        for port_info in open_ports:
+            port = port_info['port']
+            service = port_info['service']
+            version = port_info['version']
+            
+            # قاعدة بيانات الثغرات المتقدمة
+            vuln_db = {
+                'ssh': {
+                    'high_risk_versions': ['OpenSSH < 7.4'],
+                    'description': 'احتمال وجود ثغرات في إصدارات قديمة من SSH',
+                    'mitigation': ['تحديث الخدمة', 'تقييد الوصول']
+                },
+                'http': {
+                    'high_risk_versions': ['Apache < 2.4.41', 'Nginx < 1.16.1'],
+                    'description': 'احتمال وجود ثغرات XSS وRCE',
+                    'mitigation': ['تحديث الخادم', 'تطبيق جدار حماية']
+                }
             }
+            
+            # البحث عن الثغرات
+            for service_type, details in vuln_db.items():
+                if service_type in service.lower():
+                    for risky_version in details['high_risk_versions']:
+                        if risky_version.split()[-1] in version:
+                            vulnerabilities.append({
+                                'port': port,
+                                'service': service,
+                                'version': version,
+                                'risk_level': 'عالية',
+                                'description': details['description'],
+                                'mitigation': details['mitigation']
+                            })
+        
+        return vulnerabilities
 
     def generate_comprehensive_report(self):
         """توليد تقرير شامل"""
@@ -208,50 +131,61 @@ class UltimateVulnerabilityScanner:
             # فحص المنافذ المفتوحة
             open_ports = self.advanced_port_scan(ip)
             
+            # فحص SSL
+            ssl_details = self.advanced_ssl_check(domain)
+            
             # تحليل الثغرات
-            vulnerabilities = self.check_vulnerabilities(open_ports)
+            vulnerabilities = self.vulnerability_analysis(open_ports)
             
-            # فحوصات متقدمة
-            advanced_scans = self.run_advanced_scans(ip)
+            # بناء التقرير المفصل
+            report_sections = [
+                f"🔍 تقرير الفحص الأمني المتقدم\n",
+                f"النطاق: {domain}\n",
+                f"IP: {ip}\n\n",
+                
+                "🔓 المنافذ والخدمات:\n" + 
+                "\n".join([
+                    f"• المنفذ {port['port']} ({port['service']}):\n"
+                    f"  الحالة: {port['state']}\n"
+                    f"  الإصدار: {port['version']}\n"
+                    for port in open_ports
+                ]) + "\n",
+                
+                "🔒 فحص SSL:\n" + 
+                str(ssl_details) + "\n\n",
+                
+                "⚠️ الثغرات المحتملة:\n" + 
+                "\n".join([
+                    f"🚨 خدمة: {vuln['service']} (المنفذ {vuln['port']})\n"
+                    f"مستوى الخطورة: {vuln['risk_level']}\n"
+                    f"الوصف: {vuln['description']}\n"
+                    "طرق التخفيف:\n" + 
+                    "\n".join(f"• {mitigation}" for mitigation in vuln['mitigation']) + "\n"
+                    for vuln in vulnerabilities
+                ])
+            ]
             
-            # بناء التقرير
-            report = f"🔍 تقرير الفحص الأمني المتقدم\n"
-            report += f"النطاق: {domain}\n"
-            report += f"IP: {ip}\n\n"
-            
-            # المنافذ المفتوحة
-            report += "🔓 المنافذ المفتوحة:\n"
-            if open_ports:
-                for port_info in open_ports:
-                    report += f"• منفذ {port_info['port']}: {port_info['service']}\n"
-            else:
-                report += "لا توجد منافذ مفتوحة\n"
-            
-            # الثغرات
-            report += "\n⚠️ الثغرات والمخاطر:\n"
-            if vulnerabilities:
-                for vuln in vulnerabilities:
-                    report += f"🚨 {vuln['name']}\n"
-                    report += f"CVE: {vuln.get('cve', 'غير محدد')}\n"
-                    report += f"الخطورة: {vuln['severity']}\n"
-                    report += f"الوصف: {vuln['description']}\n"
-                    report += "كيفية الاستغلال:\n"
-                    report += f"• {vuln['exploit']}\n"
-                    report += "طرق التخفيف:\n"
-                    for mitigation in vuln['mitigation']:
-                        report += f"• {mitigation}\n\n"
-            else:
-                report += "لم يتم العثور على ثغرات معروفة\n"
-            
-            # الفحوصات المتقدمة
-            report += "\n🌐 الفحوصات الإضافية:\n"
-            for scan in advanced_scans:
-                report += f"• {scan['type']}:\n{scan['details']}\n"
-            
-            return report
+            return report_sections
         
         except Exception as e:
-            return f"❌ خطأ في التحليل: {str(e)}"
+            return [f"❌ خطأ في التحليل: {str(e)}"]
+
+def split_long_message(message_parts, max_length=4096):
+    """تقسيم الرسائل الطويلة"""
+    messages = []
+    current_message = ""
+    
+    for section in message_parts:
+        if len(current_message) + len(section) > max_length:
+            messages.append(current_message)
+            current_message = section
+        else:
+            current_message += section
+    
+    if current_message:
+        messages.append(current_message)
+    
+    return messages
 
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
@@ -273,16 +207,20 @@ def scan_website(message):
     
     try:
         # إنشاء كائن الماسح الضوئي
-        scanner = UltimateVulnerabilityScanner(url)
+        scanner = AdvancedNetworkScanner(url)
         
         # توليد التقرير
-        report = scanner.generate_comprehensive_report()
+        report_sections = scanner.generate_comprehensive_report()
+        
+        # تقسيم الرسائل الطويلة
+        messages = split_long_message(report_sections)
         
         # حذف رسالة الانتظار
         bot.delete_message(message.chat.id, waiting_msg.message_id)
         
-        # إرسال التقرير
-        bot.reply_to(message, report)
+        # إرسال التقرير بشكل متقطع
+        for msg in messages:
+            bot.reply_to(message, msg)
     
     except Exception as e:
         # حذف رسالة الانتظار
