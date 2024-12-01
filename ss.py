@@ -1,189 +1,222 @@
+
 import telebot
 import socket
 import requests
 import ssl
-import concurrent.futures
 import subprocess
 import re
 import json
 import os
-import nmap  # إضافة مكتبة nmap للفحص المتقدم
+import concurrent.futures
+import nmap  # إضافة مسح نmap المتقدم
+import shodan  # للبحث عن المعلومات الخارجية
+import whois   # للحصول على معلومات التسجيل
+from urllib.parse import urlparse
+from cryptography import x509
+from cryptography.hazmat.backends import default_backend
+from datetime import datetime, timedelta
 
-# توكن البوت - استبدله بتوكنك
-BOT_TOKEN='8166843437:AAEZ-BJyWtzA2nKdKGhCLavP7iwg7hk5tsE'
-
-# إنشاء البوت
-bot = telebot.TeleBot(BOT_TOKEN)
-
-class AdvancedNetworkScanner:
+class AdvancedNetworkSecurityScanner:
     def __init__(self, target):
         self.target = target
-        self.nm = nmap.PortScanner()  # إنشاء كائن nmap
-
-    def extract_domain(self):
-        """استخراج اسم النطاق"""
+        self.headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+        }
+        # إضافة مفاتيح API للخدمات الخارجية
+        self.shodan_api_key = 'wmzOdzuFAUTCpTJ0nKxxQU6h57NC8F34'
+        
+    def extended_dns_enumeration(self, domain):
+        """فحص DNS المتقدم"""
+        dns_records = {}
         try:
-            domain = self.target.replace('https://', '').replace('http://', '').replace('www.', '')
-            return domain.split('/')[0]
-        except Exception:
-            return None
-
-    def resolve_ip(self, domain):
-        """استخراج IP من اسم النطاق"""
-        try:
-            return socket.gethostbyname(domain)
-        except Exception:
-            return None
-
-    def advanced_port_scan(self, ip):
-        """فحص متقدم للمنافذ باستخدام nmap"""
-        try:
-            # مسح جميع المنافذ مع اكتشاف الخدمات والإصدارات
-            self.nm.scan(ip, arguments='-p- -sV -sC -O')
+            import dns.resolver
+            record_types = ['A', 'AAAA', 'MX', 'NS', 'TXT', 'CNAME']
             
-            open_ports = []
-            for proto in self.nm[ip].all_protocols():
-                ports = self.nm[ip][proto].keys()
+            for record_type in record_types:
+                try:
+                    answers = dns.resolver.resolve(domain, record_type)
+                    dns_records[record_type] = [str(rdata) for rdata in answers]
+                except Exception as e:
+                    dns_records[record_type] = f"فشل في استرداد: {str(e)}"
+            
+            return dns_records
+        except ImportError:
+            return {"error": "يرجى تثبيت مكتبة dnspython"}
+
+    def advanced_whois_lookup(self, domain):
+        """معلومات التسجيل المتقدمة"""
+        try:
+            w = whois.whois(domain)
+            return {
+                'domain_name': w.domain_name,
+                'registrar': w.registrar,
+                'creation_date': str(w.creation_date),
+                'expiration_date': str(w.expiration_date),
+                'name_servers': w.name_servers
+            }
+        except Exception as e:
+            return {"error": f"فشل في البحث: {str(e)}"}
+
+    def advanced_nmap_scan(self, ip):
+        """مسح المنافذ والخدمات باستخدام nmap"""
+        try:
+            nm = nmap.PortScanner()
+            nm.scan(ip, arguments='-sV -sC -O')  # مسح متقدم مع كشف الإصدارات والنظام
+            
+            scan_results = []
+            for proto in nm[ip].all_protocols():
+                ports = nm[ip][proto].keys()
                 for port in ports:
-                    service = self.nm[ip][proto][port]
-                    open_ports.append({
+                    service_info = nm[ip][proto][port]
+                    scan_results.append({
                         'port': port,
-                        'state': service['state'],
-                        'service': service.get('name', 'Unknown'),
-                        'version': service.get('product', '') + ' ' + service.get('version', ''),
-                        'additional_info': service.get('script', {})
+                        'state': service_info['state'],
+                        'service': service_info['name'],
+                        'version': service_info.get('version', 'غير معروف'),
+                        'product': service_info.get('product', 'غير معروف')
                     })
             
-            return open_ports
+            return scan_results
         except Exception as e:
-            print(f"خطأ في مسح المنافذ: {e}")
-            return []
+            return [{"error": f"فشل في مسح nmap: {str(e)}"}]
 
-    def advanced_ssl_check(self, domain):
-        """فحص SSL المتقدم"""
+    def comprehensive_ssl_analysis(self, domain):
+        """تحليل SSL المتكامل"""
         try:
-            # استخدام openssl للحصول على معلومات SSL التفصيلية
-            cmd = f"openssl s_client -connect {domain}:443 -brief"
-            result = subprocess.check_output(cmd, shell=True, stderr=subprocess.STDOUT, text=True)
+            # استخراج الشهادة مباشرة
+            cert = ssl.get_server_certificate((domain, 443))
+            x509_cert = x509.load_pem_x509_certificate(cert.encode('ascii'), default_backend())
             
-            # فحص صلاحية الشهادة
-            verify_cmd = f"openssl s_client -connect {domain}:443 -verify 5"
-            verify_result = subprocess.check_output(verify_cmd, shell=True, stderr=subprocess.STDOUT, text=True)
-            
+            # تحليل متقدم للشهادة
             return {
-                'ssl_details': result,
-                'verification': verify_result
+                'subject': x509_cert.subject.get_attributes_for_oid(x509.NameOID.COMMON_NAME)[0].value,
+                'issuer': x509_cert.issuer.get_attributes_for_oid(x509.NameOID.COMMON_NAME)[0].value,
+                'version': x509_cert.version.name,
+                'serial_number': x509_cert.serial_number,
+                'not_valid_before': x509_cert.not_valid_before,
+                'not_valid_after': x509_cert.not_valid_after,
+                'days_to_expiry': (x509_cert.not_valid_after - datetime.now()).days,
+                'is_expired': datetime.now() > x509_cert.not_valid_after,
+                'signature_algorithm': x509_cert.signature_algorithm_oid._name
             }
         except Exception as e:
-            return {'error': str(e)}
+            return {"error": f"فشل التحليل: {str(e)}"}
 
-    def vulnerability_analysis(self, open_ports):
-        """تحليل الثغرات المتقدم"""
+    def advanced_vulnerability_check(self, services):
+        """فحص الثغرات المتقدم"""
         vulnerabilities = []
-        
-        for port_info in open_ports:
-            port = port_info['port']
-            service = port_info['service']
-            version = port_info['version']
-            
-            # قاعدة بيانات الثغرات المتقدمة
-            vuln_db = {
-                'ssh': {
-                    'high_risk_versions': ['OpenSSH < 7.4'],
-                    'description': 'احتمال وجود ثغرات في إصدارات قديمة من SSH',
-                    'mitigation': ['تحديث الخدمة', 'تقييد الوصول']
-                },
-                'http': {
-                    'high_risk_versions': ['Apache < 2.4.41', 'Nginx < 1.16.1'],
-                    'description': 'احتمال وجود ثغرات XSS وRCE',
-                    'mitigation': ['تحديث الخادم', 'تطبيق جدار حماية']
-                }
+        vuln_db = {
+            'ssh': {
+                'risks': [
+                    'إمكانية هجمات القوة الغاشمة',
+                    'مخاطر المصادقة الضعيفة',
+                    'احتمال استغلال نقاط الضعف في البروتوكول'
+                ],
+                'recommendations': [
+                    'استخدام مفاتيح SSH بدلاً من كلمات المرور',
+                    'تقييد الوصول من IP محددة',
+                    'تحديث OpenSSH لأحدث إصدار'
+                ]
+            },
+            'http': {
+                'risks': [
+                    'احتمال هجمات XSS',
+                    'تسريب معلومات حساسة',
+                    'مخاطر الحقن'
+                ],
+                'recommendations': [
+                    'تطبيق CSP headers',
+                    'استخدام HTTPS بشكل حصري',
+                    'التحقق من المدخلات'
+                ]
             }
-            
-            # البحث عن الثغرات
-            for service_type, details in vuln_db.items():
-                if service_type in service.lower():
-                    for risky_version in details['high_risk_versions']:
-                        if risky_version.split()[-1] in version:
-                            vulnerabilities.append({
-                                'port': port,
-                                'service': service,
-                                'version': version,
-                                'risk_level': 'عالية',
-                                'description': details['description'],
-                                'mitigation': details['mitigation']
-                            })
+        }
+        
+        for service in services:
+            service_name = service.get('service', '').lower()
+            if service_name in vuln_db:
+                vulnerabilities.append({
+                    'service': service_name,
+                    'port': service.get('port', 'غير محدد'),
+                    'risks': vuln_db[service_name]['risks'],
+                    'recommendations': vuln_db[service_name]['recommendations']
+                })
         
         return vulnerabilities
 
     def generate_comprehensive_report(self):
-        """توليد تقرير شامل"""
+        """توليد التقرير الشامل"""
         try:
-            # استخراج النطاق والIP
-            domain = self.extract_domain()
-            if not domain:
-                return "❌ رابط غير صالح"
+            domain = urlparse(self.target).netloc or urlparse(self.target).path
+            domain = domain.replace('www.', '').split(':')[0]
+            ip = socket.gethostbyname(domain)
             
-            ip = self.resolve_ip(domain)
-            if not ip:
-                return "❌ تعذر استخراج عنوان IP"
+            # جمع المعلومات
+            dns_info = self.extended_dns_enumeration(domain)
+            whois_info = self.advanced_whois_lookup(domain)
+            nmap_results = self.advanced_nmap_scan(ip)
+            ssl_details = self.comprehensive_ssl_analysis(domain)
+            vulnerabilities = self.advanced_vulnerability_check(nmap_results)
             
-            # فحص المنافذ المفتوحة
-            open_ports = self.advanced_port_scan(ip)
-            
-            # فحص SSL
-            ssl_details = self.advanced_ssl_check(domain)
-            
-            # تحليل الثغرات
-            vulnerabilities = self.vulnerability_analysis(open_ports)
-            
-            # بناء التقرير المفصل
-            report_sections = [
-                f"🔍 تقرير الفحص الأمني المتقدم\n",
-                f"النطاق: {domain}\n",
-                f"IP: {ip}\n\n",
-                
-                "🔓 المنافذ والخدمات:\n" + 
-                "\n".join([
-                    f"• المنفذ {port['port']} ({port['service']}):\n"
-                    f"  الحالة: {port['state']}\n"
-                    f"  الإصدار: {port['version']}\n"
-                    for port in open_ports
-                ]) + "\n",
-                
-                "🔒 فحص SSL:\n" + 
-                str(ssl_details) + "\n\n",
-                
-                "⚠️ الثغرات المحتملة:\n" + 
-                "\n".join([
-                    f"🚨 خدمة: {vuln['service']} (المنفذ {vuln['port']})\n"
-                    f"مستوى الخطورة: {vuln['risk_level']}\n"
-                    f"الوصف: {vuln['description']}\n"
-                    "طرق التخفيف:\n" + 
-                    "\n".join(f"• {mitigation}" for mitigation in vuln['mitigation']) + "\n"
-                    for vuln in vulnerabilities
-                ])
+            # بناء التقرير التفصيلي
+            report = [
+                f"🔍 تقرير الفحص الأمني المتكامل\n" +
+                f"النطاق: {domain}\n" +
+                f"IP: {ip}\n\n"
             ]
             
-            return report_sections
+            # معلومات DNS
+            report.append("🌐 معلومات DNS:\n" + 
+                          "\n".join([f"• {key}: {value}" for key, value in dns_info.items()]) + "\n\n")
+            
+            # معلومات التسجيل
+            report.append("📋 معلومات التسجيل:\n" +
+                          "\n".join([f"• {key}: {value}" for key, value in whois_info.items()]) + "\n\n")
+            
+            # نتائج nmap
+            report.append("🔓 المنافذ والخدمات:\n" +
+                          "\n".join([
+                              f"• المنفذ {service.get('port', 'غير معروف')}: " +
+                              f"{service.get('service', 'غير معروف')} " +
+                              f"(الحالة: {service.get('state', 'غير معروف')})"
+                              for service in nmap_results
+                          ]) + "\n\n")
+            
+            # تفاصيل SSL
+            report.append("🔒 تحليل SSL:\n" +
+                          "\n".join([f"• {key}: {value}" for key, value in ssl_details.items()]) + "\n\n")
+            
+            # الثغرات والتوصيات
+            report.append("⚠️ المخاطر والتوصيات:\n" +
+                          "\n".join([
+                              f"🚨 الخدمة: {vuln['service']} (المنفذ {vuln['port']})\n" +
+                              "المخاطر:\n" + 
+                              "\n".join(f"• {risk}" for risk in vuln['risks']) + "\n" +
+                              "التوصيات:\n" +
+                              "\n".join(f"• {rec}" for rec in vuln['recommendations'])
+                              for vuln in vulnerabilities
+                          ]) + "\n"
+            )
+            
+            return report
         
         except Exception as e:
             return [f"❌ خطأ في التحليل: {str(e)}"]
 
-def split_long_message(message_parts, max_length=4096):
-    """تقسيم الرسائل الطويلة"""
+def split_messages(report_sections, max_length=4000):
+    """تقسيم الرسائل بشكل آمن"""
     messages = []
     current_message = ""
     
-    for section in message_parts:
+    for section in report_sections:
         if len(current_message) + len(section) > max_length:
-            messages.append(current_message)
+            messages.append(current_message.strip())
             current_message = section
         else:
             current_message += section
     
     if current_message:
-        messages.append(current_message)
+        messages.append(current_message.strip())
     
     return messages
 
@@ -202,30 +235,21 @@ def scan_website(message):
     """فحص الموقع"""
     url = message.text.strip()
     
-    # إرسال رسالة انتظار
-    waiting_msg = bot.reply_to(message, "🔍 جارٍ إجراء الفحص الشامل... قد يستغرق بعض الوقت")
-    
     try:
         # إنشاء كائن الماسح الضوئي
-        scanner = AdvancedNetworkScanner(url)
+        scanner = ComprehensiveNetworkScanner(url)
         
         # توليد التقرير
         report_sections = scanner.generate_comprehensive_report()
         
-        # تقسيم الرسائل الطويلة
-        messages = split_long_message(report_sections)
-        
-        # حذف رسالة الانتظار
-        bot.delete_message(message.chat.id, waiting_msg.message_id)
+        # تقسيم الرسائل
+        messages = split_messages(report_sections)
         
         # إرسال التقرير بشكل متقطع
         for msg in messages:
             bot.reply_to(message, msg)
     
     except Exception as e:
-        # حذف رسالة الانتظار
-        bot.delete_message(message.chat.id, waiting_msg.message_id)
-        
         # إرسال رسالة الخطأ
         bot.reply_to(message, f"❌ حدث خطأ: {str(e)}")
 
